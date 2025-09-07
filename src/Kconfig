@@ -1,0 +1,21 @@
+# Copyright (c) 2020 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+menuconfig EC11_ISH
+    bool "EC11-ish incremental encoder"
+    default y
+    depends on GPIO
+    help
+      Enable driver for EC11-ish incremental encoder sensors.
+
+if EC11_ISH
+
+config EC11_ISH_DEBOUNCE_MS
+    int "Debounce, msec"
+    default 75
+
+config EC11_ISH_TRIGGER_WINDOW
+    int "Trigger window, msec"
+    default 75
+
+endif # EC11_ISH

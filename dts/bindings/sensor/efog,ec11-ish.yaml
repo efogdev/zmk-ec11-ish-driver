@@ -1,0 +1,22 @@
+description: |
+  Sensor driver for the "Alps EC11"-ish rotary encoders
+
+compatible: "efog,ec11-ish"
+
+properties:
+  a-gpios:
+    type: phandle-array
+    required: true
+    description: A pin for the encoder
+  b-gpios:
+    type: phandle-array
+    required: true
+    description: A pin for the encoder
+  steps:
+    type: int
+    description: Number of pulses in one full rotation
+    required: true
+  pulses:
+    type: int
+    description: Number of pulses for one tick
+    required: true
