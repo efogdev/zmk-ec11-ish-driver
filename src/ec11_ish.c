@@ -13,7 +13,6 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log.h>
-
 #include "ec11_ish.h"
 
 LOG_MODULE_REGISTER(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
