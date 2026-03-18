@@ -15,6 +15,12 @@
 #include <zephyr/logging/log.h>
 #include "ec11_ish.h"
 
+#if IS_ENABLED(CONFIG_ZMK_RUNTIME_CONFIG)
+#include <zmk_runtime_config/runtime_config.h>
+#else
+#define ZRC_GET(key, default_val) (default_val)
+#endif
+
 LOG_MODULE_REGISTER(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
 
 static void ec11_work_handler(struct k_work *work);
@@ -35,11 +41,11 @@ static void process_pulses_and_trigger(const struct device *dev) {
         direction = -1;
     }
 
+    const int32_t debounce_ms = ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS);
     if (direction != 0 &&
         direction == drv_data->last_direction &&
-        (now - drv_data->last_report_time) < CONFIG_EC11_ISH_DEBOUNCE_MS) {
-        LOG_INF("Debouncing: ignoring report in same direction within %d ms",
-                CONFIG_EC11_ISH_DEBOUNCE_MS);
+        (now - drv_data->last_report_time) < debounce_ms) {
+        LOG_INF("Debouncing: ignoring report in same direction within %d ms", debounce_ms);
         drv_data->pulses = 0;
         return;
     }
@@ -96,7 +102,7 @@ static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan)
         drv_data->pulses += delta;
 
         if (drv_data->pulses == delta) {
-            k_work_schedule(&drv_data->work, K_MSEC(CONFIG_EC11_ISH_TRIGGER_WINDOW));
+            k_work_schedule(&drv_data->work, K_MSEC(ZRC_GET("ec11/trigger_win", CONFIG_EC11_ISH_TRIGGER_WINDOW)));
         }
 
         if (abs(drv_data->pulses) >= drv_cfg->steps) {
@@ -190,5 +196,14 @@ int ec11_ish_init(const struct device *dev) {
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, ec11_ish_init, NULL, &ec11_ish_data_##n, &ec11_cfg_##n, POST_KERNEL,  \
                           CONFIG_SENSOR_INIT_PRIORITY, &ec11_driver_api);
+
+#if IS_ENABLED(CONFIG_ZMK_RUNTIME_CONFIG)
+static int ec11_ish_register_runtime_params(void) {
+    zrc_register("ec11/debounce_ms",  CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 5000);
+    zrc_register("ec11/trigger_win",  CONFIG_EC11_ISH_TRIGGER_WINDOW, 0, 5000);
+    return 0;
+}
+SYS_INIT(ec11_ish_register_runtime_params, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
+#endif /* CONFIG_ZMK_RUNTIME_CONFIG */
 
 DT_INST_FOREACH_STATUS_OKAY(EC11_INST)
