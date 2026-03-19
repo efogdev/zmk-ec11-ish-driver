@@ -47,6 +47,10 @@ static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan)
         break;
     }
 
+    if (delta == 0) {
+        return ec11_sample_fetch(dev, chan);
+    }
+
     drv_data->delta = delta;
     drv_data->ab_state = val;
     return 0;
