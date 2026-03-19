@@ -32,7 +32,5 @@ struct ec11_ish_data {
     struct k_work_delayable b_work;
 };
 
-int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig,
-                         sensor_trigger_handler_t handler);
-
+int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig, sensor_trigger_handler_t handler);
 int ec11_ish_init_interrupt(const struct device *dev);

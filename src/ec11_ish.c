@@ -21,7 +21,9 @@
 
 LOG_MODULE_REGISTER(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
 
-static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan) {
+#define EC11_RECURSION_MAX_DEPTH 8192
+
+static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_channel chan, const uint16_t depth) {
     struct ec11_ish_data *drv_data = dev->data;
     const struct ec11_ish_config *drv_cfg = dev->config;
     __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_ROTATION);
@@ -47,13 +49,18 @@ static int ec11_sample_fetch(const struct device *dev, enum sensor_channel chan)
         break;
     }
 
-    if (delta == 0) {
-        return ec11_sample_fetch(dev, chan);
+    if (delta == 0 && depth < EC11_RECURSION_MAX_DEPTH) {
+        k_sleep(K_USEC(10));
+        return ec11_sample_fetch_impl(dev, chan, depth + 1);
     }
 
     drv_data->delta = delta;
     drv_data->ab_state = val;
     return 0;
+}
+
+static int ec11_sample_fetch(const struct device *dev, const enum sensor_channel chan) {
+    return ec11_sample_fetch_impl(dev, chan, 0);
 }
 
 static int ec11_channel_get(const struct device *dev, const enum sensor_channel chan,

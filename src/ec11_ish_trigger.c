@@ -23,22 +23,21 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
 
-static void setup_a_int(const struct device *dev, bool enable) {
+static void setup_a_int(const struct device *dev, const bool enable) {
     const struct ec11_ish_config *cfg = dev->config;
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set A pin GPIO interrupt");
     }
 }
 
-static void setup_b_int(const struct device *dev, bool enable) {
+static void setup_b_int(const struct device *dev, const bool enable) {
     const struct ec11_ish_config *cfg = dev->config;
     if (gpio_pin_interrupt_configure_dt(&cfg->b, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
         LOG_WRN("Unable to set B pin GPIO interrupt");
     }
 }
 
-static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback *cb,
-                                 uint32_t pins) {
+static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     struct ec11_ish_data *drv_data = CONTAINER_OF(cb, struct ec11_ish_data, a_gpio_cb);
     setup_a_int(drv_data->dev, false);
 
@@ -46,12 +45,10 @@ static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback 
         drv_data->handler(dev, drv_data->trigger);
     }
 
-    k_work_reschedule(&drv_data->a_work,
-                      K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
+    k_work_reschedule(&drv_data->a_work, K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
 }
 
-static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback *cb,
-                                 uint32_t pins) {
+static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     struct ec11_ish_data *drv_data = CONTAINER_OF(cb, struct ec11_ish_data, b_gpio_cb);
     setup_b_int(drv_data->dev, false);
 
@@ -59,13 +56,12 @@ static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback 
         drv_data->handler(dev, drv_data->trigger);
     }
 
-    k_work_reschedule(&drv_data->b_work,
-                      K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
+    k_work_reschedule(&drv_data->b_work, K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
 }
 
 static void ec11_a_work_cb(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, a_work);
+    const struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, a_work);
     const struct device *dev = drv_data->dev;
 
     setup_a_int(dev, true);
@@ -73,14 +69,13 @@ static void ec11_a_work_cb(struct k_work *work) {
 
 static void ec11_b_work_cb(struct k_work *work) {
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-    struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, b_work);
+    const struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, b_work);
     const struct device *dev = drv_data->dev;
 
     setup_b_int(dev, true);
 }
 
-int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig,
-                         sensor_trigger_handler_t handler) {
+int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig, const sensor_trigger_handler_t handler) {
     struct ec11_ish_data *drv_data = dev->data;
 
     setup_a_int(dev, false);
