@@ -50,7 +50,11 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
     }
 
     if (delta == 0 && depth < EC11_RECURSION_MAX_DEPTH) {
-        k_sleep(K_USEC(1));
+        if (depth % 16 == 0) {
+            k_sleep(K_USEC(1));
+        }
+
+
         return ec11_sample_fetch_impl(dev, chan, depth + 1);
     }
 
