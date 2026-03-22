@@ -26,14 +26,14 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
     const struct ec11_ish_config *drv_cfg = dev->config;
     __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_ROTATION);
 
-    const uint32_t now = k_uptime_get_32();
+    k_work_cancel_delayable(&drv_data->compensation_work);
+    if (drv_data->compensate) {
+        drv_data->compensate = false;
+        return 0;
+    }
+
     const uint8_t val = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     int8_t delta;
-
-    if (drv_data->last_correct_delta != 0 && depth == 0
-        && now - drv_data->last_sample_time > ZRC_GET("ec11/delta_ttl", CONFIG_EC11_ISH_LAST_DELTA_TTL)) {
-        drv_data->last_correct_delta = 0;
-    }
 
     switch (val | (drv_data->ab_state << 2)) {
     case 0b0010:
@@ -52,19 +52,16 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
         delta = 0;
         break;
     }
-    
+
     if (delta == 0 && depth < ZRC_GET("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH)) {
         return ec11_sample_fetch_impl(dev, chan, depth + 1);
     }
 
-    if (delta == 0 && drv_data->last_correct_delta != 0) {
-        return drv_data->last_correct_delta;
-    }
-
-    drv_data->last_sample_time = now;
-    drv_data->last_correct_delta = delta;
     drv_data->delta = delta;
     drv_data->ab_state = val;
+    drv_data->pulses_cnt += delta;
+
+    k_work_reschedule(&drv_data->compensation_work, K_MSEC(ZRC_GET("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW)));
     return 0;
 }
 
@@ -81,11 +78,17 @@ static int ec11_channel_get(const struct device *dev, const enum sensor_channel 
         return -ENOTSUP;
     }
 
-    const int32_t numerator = 360 * drv_data->delta;
-    val->val1 = numerator / (int32_t)drv_cfg->steps;
-    val->val2 = (numerator % (int32_t)drv_cfg->steps) * 1000000 / (int32_t)drv_cfg->steps;
-    drv_data->delta = 0;
+    const int8_t triggers = drv_data->pulses_cnt / drv_cfg->pulses;
+    if (triggers == 0) {
+        val->val1 = 0;
+        val->val2 = 0;
+        return 0;
+    }
 
+    val->val1 = 0;
+    val->val2 = triggers;
+    drv_data->delta = 0;
+    drv_data->pulses_cnt -= triggers * drv_cfg->pulses;
     return 0;
 }
 
@@ -94,6 +97,26 @@ static const struct sensor_driver_api ec11_driver_api = {
     .sample_fetch = ec11_sample_fetch,
     .channel_get = ec11_channel_get,
 };
+
+static void ec11_comp_cb(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, compensation_work);
+    const struct device *dev = drv_data->dev;
+    const struct ec11_ish_config *drv_cfg = dev->config;
+
+    const int8_t thres = ZRC_GET("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF)) ? drv_cfg->pulses / 2 : 0;
+    if (drv_data->pulses_cnt > thres && drv_data->pulses_cnt < drv_cfg->pulses) {
+        drv_data->compensate = true;
+        drv_data->pulses_cnt = drv_cfg->pulses;
+    } else if (drv_data->pulses_cnt < -thres && drv_data->pulses_cnt > -drv_cfg->pulses) {
+        drv_data->compensate = true;
+        drv_data->pulses_cnt = -drv_cfg->pulses;
+    } else {
+        return;
+    }
+
+    drv_data->handler(dev, drv_data->trigger);
+}
 
 int ec11_ish_init(const struct device *dev) {
     struct ec11_ish_data *drv_data = dev->data;
@@ -129,10 +152,11 @@ int ec11_ish_init(const struct device *dev) {
         return -EIO;
     }
 
+    k_work_init_delayable(&drv_data->compensation_work, ec11_comp_cb);
+
     drv_data->ab_state = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     drv_data->delta = 0;
-    drv_data->last_correct_delta = 0;
-    drv_data->last_sample_time = 0;
+    drv_data->pulses_cnt = 0;
     return 0;
 }
 
@@ -142,6 +166,7 @@ int ec11_ish_init(const struct device *dev) {
         .a = GPIO_DT_SPEC_INST_GET(n, a_gpios),                                                    \
         .b = GPIO_DT_SPEC_INST_GET(n, b_gpios),                                                    \
         .steps = DT_INST_PROP_OR(n, steps, 1),                                                     \
+        .pulses = DT_INST_PROP_OR(n, pulses, 1),                                                   \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, ec11_ish_init, NULL, &ec11_ish_data_##n, &ec11_cfg_##n, POST_KERNEL,  \
                           CONFIG_SENSOR_INIT_PRIORITY, &ec11_driver_api);
@@ -152,7 +177,8 @@ DT_INST_FOREACH_STATUS_OKAY(EC11_INST)
 static int ec11_ish_register_runtime_params(void) {
     zrc_register("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 100);
     zrc_register("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH, 1, 65535);
-    zrc_register("ec11/delta_ttl", CONFIG_EC11_ISH_LAST_DELTA_TTL, 1, 65535);
+    zrc_register("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW, 1, 65535);
+    zrc_register("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF), 0, 1);
     return 0;
 }
 SYS_INIT(ec11_ish_register_runtime_params, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);

@@ -15,9 +15,14 @@ struct ec11_ish_config {
     const struct gpio_dt_spec b;
 
     const uint16_t steps;
+    const uint8_t pulses;
 };
 
 struct ec11_ish_data {
+    bool compensate;
+    uint8_t ab_state;
+    int8_t delta, pulses_cnt;
+
     struct gpio_callback a_gpio_cb;
     struct gpio_callback b_gpio_cb;
     const struct device *dev;
@@ -27,10 +32,7 @@ struct ec11_ish_data {
 
     struct k_work_delayable a_work;
     struct k_work_delayable b_work;
-
-    uint8_t ab_state;
-    uint32_t last_sample_time;
-    int8_t last_correct_delta, delta;
+    struct k_work_delayable compensation_work;
 };
 
 int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig, sensor_trigger_handler_t handler);
