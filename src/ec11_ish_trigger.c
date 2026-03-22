@@ -39,24 +39,36 @@ static void setup_b_int(const struct device *dev, const bool enable) {
 
 static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     struct ec11_ish_data *drv_data = CONTAINER_OF(cb, struct ec11_ish_data, a_gpio_cb);
-    setup_a_int(drv_data->dev, false);
+    const uint8_t debounce = ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS);
+
+    if (debounce > 0) {
+        setup_a_int(drv_data->dev, false);
+    }
 
     if (drv_data->handler) {
         drv_data->handler(dev, drv_data->trigger);
     }
 
-    k_work_reschedule(&drv_data->a_work, K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
+    if (debounce > 0) {
+        k_work_reschedule(&drv_data->a_work, K_MSEC(debounce));
+    }
 }
 
 static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     struct ec11_ish_data *drv_data = CONTAINER_OF(cb, struct ec11_ish_data, b_gpio_cb);
-    setup_b_int(drv_data->dev, false);
+    const uint8_t debounce = ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS);
+
+    if (debounce > 0) {
+        setup_b_int(drv_data->dev, false);
+    }
 
     if (drv_data->handler) {
         drv_data->handler(dev, drv_data->trigger);
     }
 
-    k_work_reschedule(&drv_data->b_work, K_MSEC(ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS)));
+    if (debounce > 0) {
+        k_work_reschedule(&drv_data->b_work, K_MSEC(debounce));
+    }
 }
 
 static void ec11_a_work_cb(struct k_work *work) {

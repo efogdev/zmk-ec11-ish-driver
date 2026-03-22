@@ -21,15 +21,19 @@
 
 LOG_MODULE_REGISTER(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
 
-#define EC11_RECURSION_MAX_DEPTH 8192
-
 static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_channel chan, const uint16_t depth) {
     struct ec11_ish_data *drv_data = dev->data;
     const struct ec11_ish_config *drv_cfg = dev->config;
     __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_ROTATION);
 
+    const uint32_t now = k_uptime_get_32();
     const uint8_t val = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     int8_t delta;
+
+    if (drv_data->last_correct_delta != 0 && depth == 0
+        && now - drv_data->last_sample_time > ZRC_GET("ec11/delta_ttl", CONFIG_EC11_ISH_LAST_DELTA_TTL)) {
+        drv_data->last_correct_delta = 0;
+    }
 
     switch (val | (drv_data->ab_state << 2)) {
     case 0b0010:
@@ -48,16 +52,17 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
         delta = 0;
         break;
     }
-
-    if (delta == 0 && depth < EC11_RECURSION_MAX_DEPTH) {
-        if (depth % 16 == 0) {
-            k_sleep(K_USEC(1));
-        }
-
-
+    
+    if (delta == 0 && depth < ZRC_GET("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH)) {
         return ec11_sample_fetch_impl(dev, chan, depth + 1);
     }
 
+    if (delta == 0 && drv_data->last_correct_delta != 0) {
+        return drv_data->last_correct_delta;
+    }
+
+    drv_data->last_sample_time = now;
+    drv_data->last_correct_delta = delta;
     drv_data->delta = delta;
     drv_data->ab_state = val;
     return 0;
@@ -126,12 +131,13 @@ int ec11_ish_init(const struct device *dev) {
 
     drv_data->ab_state = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     drv_data->delta = 0;
-
+    drv_data->last_correct_delta = 0;
+    drv_data->last_sample_time = 0;
     return 0;
 }
 
 #define EC11_INST(n)                                                                               \
-    static struct ec11_ish_data ec11_ish_data_##n;                                                 \
+    static struct ec11_ish_data ec11_ish_data_##n = {0};                                           \
     static const struct ec11_ish_config ec11_cfg_##n = {                                           \
         .a = GPIO_DT_SPEC_INST_GET(n, a_gpios),                                                    \
         .b = GPIO_DT_SPEC_INST_GET(n, b_gpios),                                                    \
@@ -144,7 +150,9 @@ DT_INST_FOREACH_STATUS_OKAY(EC11_INST)
 
 #if IS_ENABLED(CONFIG_ZMK_RUNTIME_CONFIG)
 static int ec11_ish_register_runtime_params(void) {
-    zrc_register("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 5000);
+    zrc_register("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 100);
+    zrc_register("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH, 1, 65535);
+    zrc_register("ec11/delta_ttl", CONFIG_EC11_ISH_LAST_DELTA_TTL, 1, 65535);
     return 0;
 }
 SYS_INIT(ec11_ish_register_runtime_params, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);

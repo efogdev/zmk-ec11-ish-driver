@@ -18,4 +18,12 @@ config EC11_ISH_DEBOUNCE_MS
       After an edge is detected, the interrupt is suppressed for this duration
       before the line state is sampled and any trigger is fired.
 
+config EC11_ISH_LAST_DELTA_TTL
+    int "Time-to-live of the previous sample for correction, msec"
+    default 200
+
+config EC11_ISH_MAX_RECURSION_DEPTH
+    int "Maximum recursion depth for repeated reads"
+    default 2048
+
 endif # EC11_ISH
