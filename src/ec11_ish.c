@@ -89,6 +89,7 @@ static int ec11_channel_get(const struct device *dev, const enum sensor_channel 
     val->val2 = triggers;
     drv_data->delta = 0;
     drv_data->pulses_cnt -= triggers * drv_cfg->pulses;
+    drv_data->ab_state = drv_data->initial_ab;
     return 0;
 }
 
@@ -154,7 +155,7 @@ int ec11_ish_init(const struct device *dev) {
 
     k_work_init_delayable(&drv_data->compensation_work, ec11_comp_cb);
 
-    drv_data->ab_state = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
+    drv_data->ab_state = drv_data->initial_ab = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     drv_data->delta = 0;
     drv_data->pulses_cnt = 0;
     return 0;

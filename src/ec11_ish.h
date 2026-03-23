@@ -20,7 +20,7 @@ struct ec11_ish_config {
 
 struct ec11_ish_data {
     bool compensate;
-    uint8_t ab_state;
+    uint8_t ab_state, initial_ab;
     int8_t delta, pulses_cnt;
 
     struct gpio_callback a_gpio_cb;
