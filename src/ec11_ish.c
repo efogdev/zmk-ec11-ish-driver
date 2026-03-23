@@ -26,7 +26,10 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
     const struct ec11_ish_config *drv_cfg = dev->config;
     __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_ROTATION);
 
-    k_work_cancel_delayable(&drv_data->compensation_work);
+    if (ZRC_GET("ec11/do_comp", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MISSES))) {
+        k_work_cancel_delayable(&drv_data->compensation_work);
+    }
+
     if (drv_data->compensate) {
         drv_data->compensate = false;
         return 0;
@@ -61,7 +64,10 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
     drv_data->ab_state = val;
     drv_data->pulses_cnt += delta;
 
-    k_work_reschedule(&drv_data->compensation_work, K_MSEC(ZRC_GET("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW)));
+    if (ZRC_GET("ec11/do_comp", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MISSES))) {
+        k_work_reschedule(&drv_data->compensation_work, K_MSEC(ZRC_GET("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW)));
+    }
+
     return 0;
 }
 
@@ -153,7 +159,9 @@ int ec11_ish_init(const struct device *dev) {
         return -EIO;
     }
 
-    k_work_init_delayable(&drv_data->compensation_work, ec11_comp_cb);
+    if (ZRC_GET("ec11/do_comp", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MISSES))) {
+        k_work_init_delayable(&drv_data->compensation_work, ec11_comp_cb);
+    }
 
     drv_data->ab_state = drv_data->initial_ab = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
     drv_data->delta = 0;
@@ -179,6 +187,7 @@ static int ec11_ish_register_runtime_params(void) {
     zrc_register("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 100);
     zrc_register("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH, 1, 65535);
     zrc_register("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW, 1, 65535);
+    zrc_register("ec11/do_comp", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MISSES), 0, 1);
     zrc_register("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF), 0, 1);
     return 0;
 }
