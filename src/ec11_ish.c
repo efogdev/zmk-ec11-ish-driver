@@ -186,7 +186,7 @@ DT_INST_FOREACH_STATUS_OKAY(EC11_INST)
 static int ec11_ish_register_runtime_params(void) {
     zrc_register("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS, 0, 10);
     zrc_register("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH, 1, 8192);
-    zrc_register("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW, 1, 255);
+    zrc_register("ec11/trigger_window", CONFIG_EC11_ISH_TRIGGER_WINDOW, 1, 1000);
     zrc_register("ec11/do_comp", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MISSES), 0, 1);
     zrc_register("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF), 0, 1);
     return 0;
