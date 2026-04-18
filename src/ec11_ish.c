@@ -17,6 +17,8 @@
 
 #if IS_ENABLED(CONFIG_ZMK_RUNTIME_CONFIG)
 #include <zmk_runtime_config/runtime_config.h>
+#else
+#define ZRC_GET(key, default_val) (default_val)
 #endif
 
 LOG_MODULE_REGISTER(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
@@ -113,15 +115,16 @@ static void ec11_comp_cb(struct k_work *work) {
 
     const int8_t thres = ZRC_GET("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF)) ? drv_cfg->pulses / 2 : 0;
     if (drv_data->pulses_cnt > thres && drv_data->pulses_cnt < drv_cfg->pulses) {
-        drv_data->compensate = true;
         drv_data->pulses_cnt = drv_cfg->pulses;
     } else if (drv_data->pulses_cnt < -thres && drv_data->pulses_cnt > -drv_cfg->pulses) {
-        drv_data->compensate = true;
         drv_data->pulses_cnt = -drv_cfg->pulses;
     } else {
-        return;
+        drv_data->pulses_cnt = 0;
+        drv_data->ab_state = drv_data->initial_ab;
+        drv_data->delta = 0;
     }
 
+    drv_data->compensate = true;
     drv_data->handler(dev, drv_data->trigger);
 }
 
