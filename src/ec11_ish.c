@@ -37,7 +37,9 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
         return 0;
     }
 
-    const uint8_t val = (gpio_pin_get_dt(&drv_cfg->a) << 1) | gpio_pin_get_dt(&drv_cfg->b);
+    const uint8_t a = gpio_pin_get_dt(&drv_cfg->a);
+    const uint8_t b = gpio_pin_get_dt(&drv_cfg->b);
+    const uint8_t val = (a << 1) | b;
     int8_t delta;
 
     switch (val | (drv_data->ab_state << 2)) {
@@ -58,10 +60,18 @@ static int ec11_sample_fetch_impl(const struct device *dev, const enum sensor_ch
         break;
     }
 
-    if (delta == 0 && depth < ZRC_GET("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH)) {
+    const uint16_t max_depth = ZRC_GET("ec11/rec_depth", CONFIG_EC11_ISH_MAX_RECURSION_DEPTH);
+
+    if (a == drv_data->last_a && b == drv_data->last_b && depth < max_depth) {
+        return 0;
+    }
+
+    if (delta == 0 && depth < max_depth) {
         return ec11_sample_fetch_impl(dev, chan, depth + 1);
     }
 
+    drv_data->last_a = a;
+    drv_data->last_b = b;
     drv_data->delta = delta;
     drv_data->ab_state = val;
     drv_data->pulses_cnt += delta;
@@ -77,13 +87,18 @@ static int ec11_sample_fetch(const struct device *dev, const enum sensor_channel
     return ec11_sample_fetch_impl(dev, chan, 0);
 }
 
-static int ec11_channel_get(const struct device *dev, const enum sensor_channel chan,
-                            struct sensor_value *val) {
+static int ec11_channel_get(const struct device *dev, const enum sensor_channel chan, struct sensor_value *val) {
     struct ec11_ish_data *drv_data = dev->data;
     const struct ec11_ish_config *drv_cfg = dev->config;
 
     if (chan != SENSOR_CHAN_ROTATION) {
         return -ENOTSUP;
+    }
+
+    if (drv_data->pulses_cnt == 0) {
+        val->val1 = 0;
+        val->val2 = 0;
+        return 0;
     }
 
     const int8_t triggers = drv_data->pulses_cnt / drv_cfg->pulses;
@@ -96,7 +111,7 @@ static int ec11_channel_get(const struct device *dev, const enum sensor_channel 
     val->val1 = 0;
     val->val2 = triggers;
     drv_data->delta = 0;
-    drv_data->pulses_cnt -= triggers * drv_cfg->pulses;
+    drv_data->pulses_cnt -= drv_cfg->pulses * triggers;
     drv_data->ab_state = drv_data->initial_ab;
     return 0;
 }
@@ -113,10 +128,10 @@ static void ec11_comp_cb(struct k_work *work) {
     const struct device *dev = drv_data->dev;
     const struct ec11_ish_config *drv_cfg = dev->config;
 
-    const int8_t thres = ZRC_GET("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF)) ? drv_cfg->pulses / 2 : 0;
-    if (drv_data->pulses_cnt > thres && drv_data->pulses_cnt < drv_cfg->pulses) {
+    const int8_t thres = ZRC_GET("ec11/comp_half", IS_ENABLED(CONFIG_EC11_ISH_COMPENSATE_MINIMUM_HALF)) ? drv_cfg->pulses / 2 : 1;
+    if (drv_data->pulses_cnt >= thres && drv_data->pulses_cnt < drv_cfg->pulses) {
         drv_data->pulses_cnt = drv_cfg->pulses;
-    } else if (drv_data->pulses_cnt < -thres && drv_data->pulses_cnt > -drv_cfg->pulses) {
+    } else if (drv_data->pulses_cnt <= -thres && drv_data->pulses_cnt > -drv_cfg->pulses) {
         drv_data->pulses_cnt = -drv_cfg->pulses;
     } else {
         drv_data->pulses_cnt = 0;

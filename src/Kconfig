@@ -20,11 +20,11 @@ config EC11_ISH_DEBOUNCE_MS
 
 config EC11_ISH_MAX_RECURSION_DEPTH
     int "Maximum recursion depth for repeated reads"
-    default 250
+    default 50
 
 config EC11_ISH_TRIGGER_WINDOW
     int "Trigger window, msec"
-    default 350
+    default 125
 
 config EC11_ISH_COMPENSATE_MISSES
     bool "Compensate for missed pulses"
@@ -37,5 +37,17 @@ config EC11_ISH_COMPENSATE_MINIMUM_HALF
     default y
 
 endif # EC11_ISH_COMPENSATE_MISSES
+
+config EC11_ISH_CALIBRATE_AT_IDLE
+    bool "Reset state after idle period"
+    default n
+
+if EC11_ISH_CALIBRATE_AT_IDLE
+
+config EC11_ISH_IDLE_THRESHOLD_MS
+    int "Idle threshold, msec"
+    default 500
+
+endif # EC11_ISH_CALIBRATE_AT_IDLE
 
 endif # EC11_ISH

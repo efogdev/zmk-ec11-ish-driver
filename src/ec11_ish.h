@@ -20,7 +20,7 @@ struct ec11_ish_config {
 
 struct ec11_ish_data {
     bool compensate;
-    uint8_t ab_state, initial_ab;
+    uint8_t ab_state, initial_ab, last_a, last_b;
     int8_t delta, pulses_cnt;
 
     struct gpio_callback a_gpio_cb;
@@ -33,6 +33,9 @@ struct ec11_ish_data {
     struct k_work_delayable a_work;
     struct k_work_delayable b_work;
     struct k_work_delayable compensation_work;
+#if IS_ENABLED(CONFIG_EC11_ISH_CALIBRATE_AT_IDLE)
+    struct k_work_delayable idle_work;
+#endif
 };
 
 int ec11_ish_trigger_set(const struct device *dev, const struct sensor_trigger *trig, sensor_trigger_handler_t handler);

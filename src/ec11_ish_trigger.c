@@ -23,6 +23,25 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(EC11_ISH, CONFIG_SENSOR_LOG_LEVEL);
 
+#if IS_ENABLED(CONFIG_EC11_ISH_CALIBRATE_AT_IDLE)
+static void ec11_idle_cb(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct ec11_ish_data *drv_data = CONTAINER_OF(dwork, struct ec11_ish_data, idle_work);
+
+    k_work_cancel_delayable(&drv_data->compensation_work);
+    drv_data->compensate = false;
+    drv_data->ab_state = drv_data->initial_ab;
+    drv_data->delta = 0;
+    drv_data->pulses_cnt = 0;
+    drv_data->last_a = 0;
+    drv_data->last_b = 0;
+}
+
+static inline void reschedule_idle(struct ec11_ish_data *drv_data) {
+    k_work_reschedule(&drv_data->idle_work, K_MSEC(CONFIG_EC11_ISH_IDLE_THRESHOLD_MS));
+}
+#endif
+
 static void setup_a_int(const struct device *dev, const bool enable) {
     const struct ec11_ish_config *cfg = dev->config;
     if (gpio_pin_interrupt_configure_dt(&cfg->a, enable ? GPIO_INT_EDGE_BOTH : GPIO_INT_DISABLE)) {
@@ -42,12 +61,17 @@ static void ec11_a_gpio_callback(const struct device *dev, struct gpio_callback 
     const uint8_t debounce = ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS);
 
     if (debounce > 0) {
+        k_work_cancel_delayable(&drv_data->a_work);
         setup_a_int(drv_data->dev, false);
     }
 
     if (drv_data->handler) {
         drv_data->handler(dev, drv_data->trigger);
     }
+
+#if IS_ENABLED(CONFIG_EC11_ISH_CALIBRATE_AT_IDLE)
+    reschedule_idle(drv_data);
+#endif
 
     if (debounce > 0) {
         k_work_reschedule(&drv_data->a_work, K_MSEC(debounce));
@@ -59,12 +83,17 @@ static void ec11_b_gpio_callback(const struct device *dev, struct gpio_callback 
     const uint8_t debounce = ZRC_GET("ec11/debounce_ms", CONFIG_EC11_ISH_DEBOUNCE_MS);
 
     if (debounce > 0) {
+        k_work_cancel_delayable(&drv_data->b_work);
         setup_b_int(drv_data->dev, false);
     }
 
     if (drv_data->handler) {
         drv_data->handler(dev, drv_data->trigger);
     }
+
+#if IS_ENABLED(CONFIG_EC11_ISH_CALIBRATE_AT_IDLE)
+    reschedule_idle(drv_data);
+#endif
 
     if (debounce > 0) {
         k_work_reschedule(&drv_data->b_work, K_MSEC(debounce));
@@ -110,6 +139,9 @@ int ec11_ish_init_interrupt(const struct device *dev) {
 
     k_work_init_delayable(&drv_data->a_work, ec11_a_work_cb);
     k_work_init_delayable(&drv_data->b_work, ec11_b_work_cb);
+#if IS_ENABLED(CONFIG_EC11_ISH_CALIBRATE_AT_IDLE)
+    k_work_init_delayable(&drv_data->idle_work, ec11_idle_cb);
+#endif
 
     gpio_init_callback(&drv_data->a_gpio_cb, ec11_a_gpio_callback, BIT(drv_cfg->a.pin));
     if (gpio_add_callback(drv_cfg->a.port, &drv_data->a_gpio_cb) < 0) {
